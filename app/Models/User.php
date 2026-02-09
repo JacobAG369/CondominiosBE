@@ -2,47 +2,43 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-    ];
+    protected $table = 'usuarios';
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
+    protected $fillable = ['id_persona', 'pass', 'admin'];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    protected $hidden = ['pass'];
+
+    public $timestamps = false;
+
+    // Laravel espera "password". Tu columna se llama "pass".
+    public function getAuthPassword()
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->pass;
+    }
+
+    public function persona()
+    {
+        return $this->belongsTo(Persona::class, 'id_persona');
+    }
+
+    // Accessor para id_depa desde per_dep
+    public function getIdDepaAttribute()
+    {
+        if (!$this->id_persona) return null;
+        
+        $perDep = \Illuminate\Support\Facades\DB::table('per_dep')
+            ->where('id_persona', $this->id_persona)
+            ->first();
+        
+        return $perDep->id_depa ?? null;
     }
 }
+
