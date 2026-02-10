@@ -104,4 +104,49 @@ class AdminUserController extends Controller
             'user' => $user->load('persona'),
         ], 201);
     }
+
+    public function stats()
+    {
+        // Total users
+        $totalUsers = User::count();
+
+        // Total residents (personas with residente=true in per_dep)
+        $totalResidents = DB::table('per_dep')
+            ->where('residente', true)
+            ->count();
+
+        // Active vs inactive residents
+        $activeResidents = DB::table('personas')
+            ->join('per_dep', 'personas.id', '=', 'per_dep.id_persona')
+            ->where('per_dep.residente', true)
+            ->where('personas.activo', true)
+            ->count();
+
+        $inactiveResidents = $totalResidents - $activeResidents;
+
+        // Users by department (top 5)
+        $usersByDepartment = DB::table('per_dep')
+            ->join('departamentos', 'per_dep.id_depa', '=', 'departamentos.id')
+            ->select('departamentos.nombre as departamento', DB::raw('COUNT(*) as count'))
+            ->groupBy('departamentos.id', 'departamentos.nombre')
+            ->orderByDesc('count')
+            ->limit(5)
+            ->get();
+
+        // Users by role
+        $usersByRole = DB::table('per_dep')
+            ->join('roles', 'per_dep.id_rol', '=', 'roles.id')
+            ->select('roles.nombre as rol', DB::raw('COUNT(*) as count'))
+            ->groupBy('roles.id', 'roles.nombre')
+            ->get();
+
+        return response()->json([
+            'total_users' => $totalUsers,
+            'total_residents' => $totalResidents,
+            'active_residents' => $activeResidents,
+            'inactive_residents' => $inactiveResidents,
+            'users_by_department' => $usersByDepartment,
+            'users_by_role' => $usersByRole,
+        ]);
+    }
 }

@@ -16,9 +16,9 @@ class ResidenteController extends Controller
         $residentes = Persona::query()
             ->whereExists(function ($q) {
                 $q->selectRaw(1)
-                  ->from('per_dep')
-                  ->whereColumn('per_dep.id_persona', 'personas.id')
-                  ->where('per_dep.residente', true);
+                    ->from('per_dep')
+                    ->whereColumn('per_dep.id_persona', 'personas.id')
+                    ->where('per_dep.residente', true);
             })
             ->get();
 
@@ -38,16 +38,16 @@ class ResidenteController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'nombre' => ['required','string','max:255'],
-            'apellido_p' => ['required','string','max:255'],
-            'apellido_m' => ['nullable','string','max:255'],
-            'celular' => ['required','string','max:20', Rule::unique('personas','celular')],
-            'activo' => ['sometimes','boolean'],
+            'nombre' => ['required', 'string', 'max:255'],
+            'apellido_p' => ['required', 'string', 'max:255'],
+            'apellido_m' => ['nullable', 'string', 'max:255'],
+            'celular' => ['required', 'string', 'max:20', Rule::unique('personas', 'celular')],
+            'activo' => ['sometimes', 'boolean'],
 
-            'id_depa' => ['required','integer', 'exists:departamentos,id'],
-            'id_rol' => ['required','integer', 'exists:roles,id'],
-            'residente' => ['required','boolean'],
-            'codigo' => ['nullable','string','max:50'],
+            'id_depa' => ['required', 'integer', 'exists:departamentos,id'],
+            'id_rol' => ['nullable', 'integer', 'exists:roles,id'], // Changed to nullable
+            'residente' => ['sometimes', 'boolean'], // Changed to sometimes
+            'codigo' => ['nullable', 'string', 'max:50'],
         ]);
 
         $persona = DB::transaction(function () use ($data) {
@@ -59,13 +59,16 @@ class ResidenteController extends Controller
                 'activo' => $data['activo'] ?? true,
             ]);
 
-            PerDep::create([
-                'id_persona' => $persona->id,
-                'id_depa' => $data['id_depa'],
-                'id_rol' => $data['id_rol'],
-                'residente' => $data['residente'],
-                'codigo' => $data['codigo'] ?? null,
-            ]);
+            // Only create PerDep if id_rol is provided (for users with roles)
+            if (isset($data['id_rol'])) {
+                PerDep::create([
+                    'id_persona' => $persona->id,
+                    'id_depa' => $data['id_depa'],
+                    'id_rol' => $data['id_rol'],
+                    'residente' => $data['residente'] ?? true,
+                    'codigo' => $data['codigo'] ?? null,
+                ]);
+            }
 
             return $persona;
         });
@@ -76,16 +79,16 @@ class ResidenteController extends Controller
     public function update(Request $request, Persona $persona)
     {
         $data = $request->validate([
-            'nombre' => ['sometimes','string','max:255'],
-            'apellido_p' => ['sometimes','string','max:255'],
-            'apellido_m' => ['nullable','string','max:255'],
-            'celular' => ['sometimes','string','max:20', Rule::unique('personas','celular')->ignore($persona->id)],
-            'activo' => ['sometimes','boolean'],
+            'nombre' => ['sometimes', 'string', 'max:255'],
+            'apellido_p' => ['sometimes', 'string', 'max:255'],
+            'apellido_m' => ['nullable', 'string', 'max:255'],
+            'celular' => ['sometimes', 'string', 'max:20', Rule::unique('personas', 'celular')->ignore($persona->id)],
+            'activo' => ['sometimes', 'boolean'],
 
-            'id_depa' => ['sometimes','integer', 'exists:departamentos,id'],
-            'id_rol' => ['sometimes','integer', 'exists:roles,id'],
-            'residente' => ['sometimes','boolean'],
-            'codigo' => ['nullable','string','max:50'],
+            'id_depa' => ['sometimes', 'integer', 'exists:departamentos,id'],
+            'id_rol' => ['sometimes', 'integer', 'exists:roles,id'],
+            'residente' => ['sometimes', 'boolean'],
+            'codigo' => ['nullable', 'string', 'max:50'],
         ]);
 
         DB::transaction(function () use ($data, $persona) {

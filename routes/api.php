@@ -42,6 +42,7 @@ Route::middleware('auth:sanctum')->group(function () {
   Route::get('/catalog/roles', [CatalogController::class, 'roles']);
 
   // ADMIN ENDPOINTS
+  Route::get('/admin/stats', [AdminUserController::class, 'stats']);
   Route::get('/admin/users', [AdminUserController::class, 'index']);
   Route::post('/admin/users', [AdminUserController::class, 'store']);
 });
