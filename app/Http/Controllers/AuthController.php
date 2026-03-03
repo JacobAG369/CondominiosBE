@@ -2,87 +2,106 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\Persona;
-use App\Models\PerDep;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
+
 class AuthController extends Controller
 {
-    public function register(Request $request)
+    /**
+     * Registro de nuevo usuario.
+     *
+     * Flujo (dentro de una transacción):
+     *  1. Crear registro en `personas`.
+     *  2. Crear registro en `usuarios` vinculando id_persona.
+     *  3. Crear registro en `per_dep` con id_rol = 1 (Residente por defecto).
+     *  4. Disparar notificación de verificación de correo.
+     */
+    public function register(Request $request): JsonResponse
     {
         $request->validate([
             'nombre' => 'required|string|max:255',
-            'apellido_p' => 'required|string|max:255',
-            'apellido_m' => 'nullable|string|max:255',
-            'celular' => 'required|string|max:20|unique:personas,celular',
-            'password' => 'required|string|min:6',
-
-            'id_depa' => 'required|integer',
-            'id_rol' => 'required|integer',
-            'residente' => 'required|boolean',
+            'apellido' => 'required|string|max:255',   // apellido_p en DB
+            'email' => 'required|email|unique:usuarios,email',
+            'password' => 'required|string|min:8|confirmed',
+            // Opcionales – mantienen compatibilidad con el flujo anterior
+            'celular' => 'nullable|string|max:20|unique:personas,celular',
+            'id_depa' => 'nullable|integer|exists:departamentos,id',
         ]);
 
-        // para crear persona
-        $persona = Persona::create([
-            'nombre' => $request->nombre,
-            'apellido_p' => $request->apellido_p,
-            'apellido_m' => $request->apellido_m,
-            'celular' => $request->celular,
-            'activo' => true,
-        ]);
+        $user = DB::transaction(function () use ($request) {
+            // 1. Crear persona
+            $persona = Persona::create([
+                'nombre' => $request->nombre,
+                'apellido_p' => $request->apellido,          // mapeado
+                'apellido_m' => $request->apellido_m ?? null,
+                'celular' => $request->celular ?? null,
+                'activo' => true,
+            ]);
 
+            // 2. Crear usuario vinculado a la persona
+            $user = User::create([
+                'id_persona' => $persona->id,
+                'email' => $request->email,
+                'pass' => Hash::make($request->password),
+                'admin' => false,
+            ]);
 
-        $user = User::create([
-            'id_persona' => $persona->id,
-            'pass' => Hash::make($request->password),
-            'admin' => ($request->id_rol == 2), // si rol 2 = Admin
-        ]);
+            // 3. Crear relación persona-departamento solo si se proporcionó id_depa
+            if ($request->filled('id_depa')) {
+                $codigo = strtoupper(Str::random(8));
+                DB::table('per_dep')->insert([
+                    'id_persona' => $persona->id,
+                    'id_depa' => $request->id_depa,
+                    'id_rol' => 1, // 1 = Residente
+                    'residente' => true,
+                    'codigo' => $codigo,
+                ]);
+            }
 
+            return $user;
+        });
 
-        $codigo = strtoupper(Str::random(8));
-
-        PerDep::create([
-            'id_persona' => $persona->id,
-            'id_depa' => $request->id_depa,
-            'id_rol' => $request->id_rol,
-            'residente' => $request->residente,
-            'codigo' => $codigo,
-        ]);
+        // 4. Enviar email de verificación (fuera de la transacción)
+        $user->sendEmailVerificationNotification();
 
         return response()->json([
-            'message' => 'Usuario registrado correctamente',
+            'message' => 'Registro exitoso. Por favor verifica tu correo electrónico '
+                . 'para activar tu cuenta.',
             'user' => $user->load('persona'),
         ], 201);
     }
 
-    public function login(Request $request)
+    /**
+     * Inicio de sesión.
+     * Bloquea el acceso si el correo no ha sido verificado.
+     */
+    public function login(Request $request): JsonResponse
     {
         $request->validate([
-            'celular' => 'required|string',
+            'email' => 'required|email',
             'password' => 'required|string',
         ]);
 
-        $persona = \App\Models\Persona::where('celular', $request->celular)->first();
+        $user = User::where('email', $request->email)->first();
 
-        if (!$persona) {
-            return response()->json(['message' => 'Credenciales inválidas'], 401);
+        if (!$user || !Hash::check($request->password, $user->pass)) {
+            return response()->json(['message' => 'Credenciales inválidas.'], 401);
         }
 
-        $user = \App\Models\User::where('id_persona', $persona->id)->first();
-
-        if (!$user) {
-            return response()->json(['message' => 'Credenciales inválidas'], 401);
+        // Bloquear acceso si el correo no ha sido verificado
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json([
+                'message' => 'Debes verificar tu correo electrónico antes de iniciar sesión. '
+                    . 'Revisa tu bandeja de entrada.',
+                'email_verified' => false,
+            ], 403);
         }
 
-
-        if (!\Illuminate\Support\Facades\Hash::check($request->password, $user->pass)) {
-            return response()->json(['message' => 'Credenciales inválidas'], 401);
-        }
-
-        // Sanctuuuuuuuuuuuuum token te odio
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -92,14 +111,14 @@ class AuthController extends Controller
     }
 
 
-    public function me(Request $request)
+    /**
+     * Retorna el perfil del usuario autenticado junto con sus datos de departamento y rol.
+     */
+    public function me(Request $request): JsonResponse
     {
         $user = $request->user();
-
-        // 1️⃣ El usuario SIEMPRE tiene id_persona según tu diagrama
         $idPersona = $user->id_persona;
 
-        // 2️⃣ Buscar relación persona-depa
         $perDep = DB::table('per_dep')
             ->where('id_persona', $idPersona)
             ->first();
@@ -115,17 +134,13 @@ class AuthController extends Controller
         ]);
     }
 
-
-    public function logout(Request $request)
+    /**
+     * Cierra sesión revocando el token actual.
+     */
+    public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()?->delete();
 
-        return response()->json([
-            'message' => 'Sesión cerrada'
-        ]);
+        return response()->json(['message' => 'Sesión cerrada.']);
     }
-
-
-
 }
-
