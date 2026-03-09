@@ -78,8 +78,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
   Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
   Route::post('/notifications/test', [NotificationController::class, 'testCreate']);
 
-  // CATALOG
-  Route::get('/catalog/departamentos', [CatalogController::class, 'departamentos']);
+  // CATALOG — roles requires auth, departamentos is public (see top of file)
   Route::get('/catalog/roles', [CatalogController::class, 'roles']);
 
   // ADMIN — solo Administradores (id_rol = 2 o admin = true)
