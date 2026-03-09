@@ -59,6 +59,7 @@ Route::post('/email/resend', function (Request $request) {
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
   Route::get('/auth/me', [AuthController::class, 'me']);
   Route::post('/auth/logout', [AuthController::class, 'logout']);
+  Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
   // CRUD residentes
   Route::get('/residentes', [ResidenteController::class, 'index']);

@@ -85,6 +85,7 @@ class AuthController extends Controller
         $request->validate([
             'email' => 'required|email',
             'password' => 'required|string',
+            'device_id' => 'required|string',
         ]);
 
         $user = User::where('email', $request->email)->first();
@@ -102,12 +103,40 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Un token por dispositivo: revocar el token previo de este device_id antes de crear uno nuevo
+        $user->tokens()->where('name', $request->device_id)->delete();
+
+        $token = $user->createToken($request->device_id)->plainTextToken;
 
         return response()->json([
             'token' => $token,
             'user' => $user->load('persona'),
         ]);
+    }
+
+    /**
+     * Cambia la contraseña y revoca todos los tokens (logout global).
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($request->current_password, $user->pass)) {
+            return response()->json(['message' => 'La contraseña actual es incorrecta.'], 422);
+        }
+
+        $user->pass = Hash::make($request->new_password);
+        $user->save();
+
+        // Logout global: revocar todos los tokens de este usuario en todos sus dispositivos
+        $user->tokens()->delete();
+
+        return response()->json(['message' => 'Contraseña actualizada. Se ha cerrado sesión en todos los dispositivos.']);
     }
 
 
