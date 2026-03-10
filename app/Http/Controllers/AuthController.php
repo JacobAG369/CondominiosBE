@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\SendResetCodeEmail;
+use App\Models\PasswordResetCode;
 use App\Models\Persona;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -171,5 +175,117 @@ class AuthController extends Controller
         $request->user()->currentAccessToken()?->delete();
 
         return response()->json(['message' => 'Sesión cerrada.']);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Password Reset via 6-digit code
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Genera y envía un código de 6 dígitos al correo del usuario.
+     * Elimina cualquier código previo para ese email antes de crear uno nuevo.
+     */
+    public function sendCode(Request $request): JsonResponse
+    {
+        $request->validate([
+            'email' => 'required|email|exists:usuarios,email',
+        ]);
+
+        // Generar código numérico de 6 dígitos, con padding por si acaso
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        // Borrar códigos previos y guardar el nuevo
+        PasswordResetCode::where('email', $request->email)->delete();
+
+        PasswordResetCode::create([
+            'email' => $request->email,
+            'code' => $code,
+            'created_at' => Carbon::now(),
+        ]);
+
+        Mail::to($request->email)->send(new SendResetCodeEmail($code));
+
+        return response()->json([
+            'message' => 'Código de verificación enviado al correo electrónico.',
+            'data' => null,
+        ]);
+    }
+
+    /**
+     * Verifica que el código sea válido y no haya expirado (15 minutos).
+     */
+    public function verifyCode(Request $request): JsonResponse
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|string|size:6',
+        ]);
+
+        $record = PasswordResetCode::where('email', $request->email)
+            ->where('code', $request->code)
+            ->first();
+
+        if (!$record) {
+            return response()->json([
+                'message' => 'El código es inválido.',
+                'data' => null,
+            ], 422);
+        }
+
+        if (Carbon::parse($record->created_at)->addMinutes(15)->isPast()) {
+            return response()->json([
+                'message' => 'El código ha expirado. Por favor solicita uno nuevo.',
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Código válido.',
+            'data' => null,
+        ]);
+    }
+
+    /**
+     * Restablece la contraseña del usuario después de validar el código.
+     * Elimina el código de la base de datos tras usarlo.
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'email' => 'required|email|exists:usuarios,email',
+            'code' => 'required|string|size:6',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $record = PasswordResetCode::where('email', $request->email)
+            ->where('code', $request->code)
+            ->first();
+
+        if (!$record) {
+            return response()->json([
+                'message' => 'El código es inválido.',
+                'data' => null,
+            ], 422);
+        }
+
+        if (Carbon::parse($record->created_at)->addMinutes(15)->isPast()) {
+            return response()->json([
+                'message' => 'El código ha expirado. Por favor solicita uno nuevo.',
+                'data' => null,
+            ], 422);
+        }
+
+        // Actualizar la contraseña del usuario (columna 'pass')
+        $user = User::where('email', $request->email)->firstOrFail();
+        $user->pass = Hash::make($request->password);
+        $user->save();
+
+        // Invalidar el código para que no pueda reutilizarse
+        $record->delete();
+
+        return response()->json([
+            'message' => 'Contraseña actualizada correctamente.',
+            'data' => null,
+        ]);
     }
 }

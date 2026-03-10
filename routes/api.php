@@ -15,6 +15,12 @@ use Illuminate\Support\Facades\Route;
 // ─────────────────────────────────────────────────────────────────────────────
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/register', [AuthController::class, 'register']);
+
+// ─── Password reset via 6-digit code (público — el usuario no está autenticado) ──
+Route::post('/auth/forgot-password/send-code', [AuthController::class, 'sendCode']);
+Route::post('/auth/forgot-password/verify-code', [AuthController::class, 'verifyCode']);
+Route::post('/auth/forgot-password/reset', [AuthController::class, 'resetPassword']);
+
 // Catálogo de departamentos — público para poder usarlo en el formulario de registro
 Route::get('/catalog/departamentos', [CatalogController::class, 'departamentos']);
 
