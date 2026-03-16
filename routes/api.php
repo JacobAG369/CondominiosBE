@@ -1,12 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\ResidenteController;
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\AdminUserController;
-use App\Http\Controllers\CatalogController;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
+use App\Http\Controllers\ResidenteController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -62,6 +63,22 @@ Route::post('/email/resend', function (Request $request) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Rutas PROTEGIDAS — requieren autenticación + email verificado
 // ─────────────────────────────────────────────────────────────────────────────
+/*
+|--------------------------------------------------------------------------
+| Ejemplos de protección por rol
+|--------------------------------------------------------------------------
+|
+| Route::middleware(['auth:sanctum', 'role:Administrador'])->group(function (): void {
+|     Route::get('/admin/users', [AdminUserController::class, 'index']);
+| });
+|
+| Route::middleware(['auth:sanctum', 'role:Residente'])->group(function (): void {
+|     Route::get('/residente/perfil', [AuthController::class, 'me']);
+| });
+|
+| También puedes usar IDs: role:2 o role:1.
+|
+*/
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
   Route::get('/auth/me', [AuthController::class, 'me']);
   Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -88,8 +105,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
   // CATALOG — roles requires auth, departamentos is public (see top of file)
   Route::get('/catalog/roles', [CatalogController::class, 'roles']);
 
-  // ADMIN — solo Administradores (id_rol = 2 o admin = true)
-  Route::middleware('role:2')->group(function () {
+  // ADMIN — solo Administradores
+  Route::middleware('role:Administrador')->group(function () {
     Route::get('/admin/stats', [AdminUserController::class, 'stats']);
     Route::get('/admin/users', [AdminUserController::class, 'index']);
     Route::post('/admin/users', [AdminUserController::class, 'store']);

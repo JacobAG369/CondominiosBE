@@ -1,5 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
+use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\EnsureEmailIsVerifiedJson;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,14 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
 
-        // Alias para verificación de roles vía per_dep.id_rol
         $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRole::class,
-            // Sobrescribe el alias "verified" con nuestra versión JSON (no redirige)
-            'verified' => \App\Http\Middleware\EnsureEmailIsVerifiedJson::class,
+            'role' => CheckRole::class,
+            'verified' => EnsureEmailIsVerifiedJson::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();
-
